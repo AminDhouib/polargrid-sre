@@ -4,7 +4,7 @@ import random
 import time
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from prometheus_client import Counter, Histogram, Gauge, CollectorRegistry, generate_latest
 
 LOCATION = os.getenv("LOCATION", "unknown")
@@ -163,6 +163,21 @@ async def inference(request: dict = None):
         "tokens_out": len(tokens) + 3,
         "latency_ms": round(latency * 1000, 1),
     }
+
+
+@app.post("/v1/inference/stream")
+async def inference_stream(request: dict = None):
+    request = request or {}
+    prompt = request.get("prompt", "Hello, world!")
+
+    async def generate():
+        words = f"{prompt} [from {LOCATION} v{VERSION}]".split()
+        for word in words:
+            await asyncio.sleep(random.uniform(0.05, 0.15))
+            yield f"data: {word}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @app.get("/info")
