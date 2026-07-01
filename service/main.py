@@ -15,8 +15,16 @@ ERROR_RATE = float(os.getenv("ERROR_RATE", "0.02"))
 DEGRADED = os.getenv("DEGRADED", "false").lower() == "true"
 
 startup_time = time.time()
+ready = False
 
 app = FastAPI(title=f"PolarGrid Inference — {LOCATION}")
+
+
+@app.on_event("startup")
+async def on_startup():
+    global ready
+    await asyncio.sleep(1)
+    ready = True
 
 
 def compute_latency():
@@ -49,6 +57,13 @@ async def health():
             "uptime_seconds": round(time.time() - startup_time, 1),
         },
     )
+
+
+@app.get("/ready")
+async def readiness():
+    if not ready:
+        return JSONResponse(status_code=503, content={"ready": False})
+    return {"ready": True, "location": LOCATION}
 
 
 @app.post("/v1/inference")
