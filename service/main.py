@@ -14,6 +14,9 @@ TAIL_LATENCY_MS = int(os.getenv("TAIL_LATENCY_MS", "200"))
 TAIL_LATENCY_PCTILE = float(os.getenv("TAIL_LATENCY_PCTILE", "0.05"))
 ERROR_RATE = float(os.getenv("ERROR_RATE", "0.02"))
 DEGRADED = os.getenv("DEGRADED", "false").lower() == "true"
+GPU_UTIL_BASE = float(os.getenv("GPU_UTIL_BASE", "65"))
+GPU_MEM_BASE = float(os.getenv("GPU_MEM_BASE", "14"))
+GPU_TEMP_BASE = float(os.getenv("GPU_TEMP_BASE", "62"))
 
 registry = CollectorRegistry()
 REQUEST_COUNT = Counter(
@@ -32,6 +35,18 @@ READY_STATUS = Gauge(
     "service_ready", "1 if ready, 0 if not",
     ["location", "version"], registry=registry,
 )
+GPU_UTILIZATION = Gauge(
+    "gpu_utilization_percent", "Simulated GPU utilization",
+    ["location"], registry=registry,
+)
+GPU_MEMORY = Gauge(
+    "gpu_memory_used_gb", "Simulated GPU VRAM usage",
+    ["location"], registry=registry,
+)
+GPU_TEMPERATURE = Gauge(
+    "gpu_temperature_celsius", "Simulated GPU temperature",
+    ["location"], registry=registry,
+)
 
 startup_time = time.time()
 ready = False
@@ -46,6 +61,24 @@ async def on_startup():
     await asyncio.sleep(1)
     ready = True
     READY_STATUS.labels(location=LOCATION, version=VERSION).set(1)
+
+
+def simulate_gpu_metrics():
+    jitter = random.uniform(-5, 5)
+    util = GPU_UTIL_BASE + jitter
+    if DEGRADED:
+        util = min(99, util + random.uniform(15, 30))
+    GPU_UTILIZATION.labels(location=LOCATION).set(round(util, 1))
+
+    mem = GPU_MEM_BASE + random.uniform(-1, 1)
+    if DEGRADED:
+        mem = min(23.5, mem + random.uniform(3, 6))
+    GPU_MEMORY.labels(location=LOCATION).set(round(mem, 1))
+
+    temp = GPU_TEMP_BASE + random.uniform(-3, 3)
+    if DEGRADED:
+        temp += random.uniform(10, 20)
+    GPU_TEMPERATURE.labels(location=LOCATION).set(round(temp, 1))
 
 
 def compute_latency():
@@ -82,6 +115,7 @@ async def health():
 
 @app.get("/metrics")
 async def metrics():
+    simulate_gpu_metrics()
     return Response(content=generate_latest(registry), media_type="text/plain")
 
 
