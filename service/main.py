@@ -37,12 +37,18 @@ def should_error():
 
 @app.get("/health")
 async def health():
-    return {
-        "status": "healthy",
-        "location": LOCATION,
-        "version": VERSION,
-        "uptime_seconds": round(time.time() - startup_time, 1),
-    }
+    status = "degraded" if DEGRADED else "healthy"
+    code = 503 if DEGRADED else 200
+    return JSONResponse(
+        status_code=code,
+        content={
+            "status": status,
+            "location": LOCATION,
+            "version": VERSION,
+            "degraded": DEGRADED,
+            "uptime_seconds": round(time.time() - startup_time, 1),
+        },
+    )
 
 
 @app.post("/v1/inference")
