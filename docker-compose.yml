@@ -1,0 +1,14 @@
+services:
+  vancouver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: polargrid-vancouver
+    ports:
+      - "8001:8000"
+    environment:
+      - LOCATION=vancouver
+      - SERVICE_VERSION=1.0.0
+      - BASE_LATENCY_MS=45
+      - ERROR_RATE=0.01
+    restart: unless-stopped
