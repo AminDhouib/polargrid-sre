@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: "polargrid-inference"
+    static_configs:
+      - targets: ["vancouver:8000"]
+        labels:
+          location: "vancouver"
+      - targets: ["toronto:8000"]
+        labels:
+          location: "toronto"
+      - targets: ["london:8000"]
+        labels:
+          location: "london"
+      - targets: ["frankfurt:8000"]
+        labels:
+          location: "frankfurt"
+      - targets: ["singapore:8000"]
+        labels:
+          location: "singapore"
