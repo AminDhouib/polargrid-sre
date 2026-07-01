@@ -4,7 +4,8 @@ import random
 import time
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import Counter, Histogram, Gauge, CollectorRegistry, generate_latest
 
 LOCATION = os.getenv("LOCATION", "unknown")
 VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
@@ -13,6 +14,24 @@ TAIL_LATENCY_MS = int(os.getenv("TAIL_LATENCY_MS", "200"))
 TAIL_LATENCY_PCTILE = float(os.getenv("TAIL_LATENCY_PCTILE", "0.05"))
 ERROR_RATE = float(os.getenv("ERROR_RATE", "0.02"))
 DEGRADED = os.getenv("DEGRADED", "false").lower() == "true"
+
+registry = CollectorRegistry()
+REQUEST_COUNT = Counter(
+    "inference_requests_total", "Total inference requests",
+    ["location", "version", "status"], registry=registry,
+)
+REQUEST_LATENCY = Histogram(
+    "inference_request_duration_seconds", "Inference latency",
+    ["location", "version"], registry=registry,
+)
+HEALTH_STATUS = Gauge(
+    "service_healthy", "1 if healthy, 0 if not",
+    ["location", "version"], registry=registry,
+)
+READY_STATUS = Gauge(
+    "service_ready", "1 if ready, 0 if not",
+    ["location", "version"], registry=registry,
+)
 
 startup_time = time.time()
 ready = False
@@ -23,8 +42,10 @@ app = FastAPI(title=f"PolarGrid Inference — {LOCATION}")
 @app.on_event("startup")
 async def on_startup():
     global ready
+    HEALTH_STATUS.labels(location=LOCATION, version=VERSION).set(0 if DEGRADED else 1)
     await asyncio.sleep(1)
     ready = True
+    READY_STATUS.labels(location=LOCATION, version=VERSION).set(1)
 
 
 def compute_latency():
@@ -59,6 +80,11 @@ async def health():
     )
 
 
+@app.get("/metrics")
+async def metrics():
+    return Response(content=generate_latest(registry), media_type="text/plain")
+
+
 @app.get("/ready")
 async def readiness():
     if not ready:
@@ -75,6 +101,8 @@ async def inference(request: dict = None):
     await asyncio.sleep(latency)
 
     if should_error():
+        REQUEST_COUNT.labels(location=LOCATION, version=VERSION, status="error").inc()
+        REQUEST_LATENCY.labels(location=LOCATION, version=VERSION).observe(latency)
         return JSONResponse(
             status_code=500,
             content={
@@ -84,6 +112,9 @@ async def inference(request: dict = None):
                 "message": "Simulated inference error",
             },
         )
+
+    REQUEST_COUNT.labels(location=LOCATION, version=VERSION, status="success").inc()
+    REQUEST_LATENCY.labels(location=LOCATION, version=VERSION).observe(latency)
 
     tokens = prompt.split()
     completion = " ".join(reversed(tokens)) + f" [from {LOCATION} v{VERSION}]"
