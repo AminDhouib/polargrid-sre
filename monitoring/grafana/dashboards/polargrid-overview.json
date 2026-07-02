@@ -158,6 +158,49 @@
           }
         }
       }
+    },
+    {
+      "title": "Active Requests & Queue Depth",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "targets": [
+        {
+          "expr": "inference_active_requests",
+          "legendFormat": "{{location}} active",
+          "refId": "A"
+        },
+        {
+          "expr": "inference_queue_depth",
+          "legendFormat": "{{location}} queue",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      }
+    },
+    {
+      "title": "Prometheus Alerts",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 32 },
+      "targets": [
+        {
+          "expr": "ALERTS{alertstate=\"firing\"}",
+          "legendFormat": "{{alertname}} — {{location}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "noValue": "No alerts firing"
+        }
+      }
     }
   ],
   "refresh": "5s",
