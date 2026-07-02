@@ -40,6 +40,7 @@ Commands:
   set-version <loc> <ver>  Update version for a location
   degrade <location>   Simulate degraded mode for a location
   recover <location>   Recover a degraded location
+  validate             Pre-rollout health/readiness check
   rollout <version>    Safe incremental rollout to all locations
   rollback <location>  Rollback a location to previous version
   teardown             Full teardown and cleanup
@@ -231,6 +232,42 @@ cmd_recover() {
     record_event "recover" "$loc" "restored to healthy"
 }
 
+cmd_validate() {
+    echo ""
+    log "=== Pre-rollout Validation ==="
+    local ok_count=0
+    local fail_count=0
+    local total=5
+
+    for loc in $LOCATIONS; do
+        local port
+        port=$(get_port "$loc")
+        local code
+        code=$(curl -s --max-time 3 "http://localhost:$port/health" -o /dev/null -w '%{http_code}' 2>/dev/null || true)
+        [ -z "$code" ] && code="000"
+        local ready_code
+        ready_code=$(curl -s --max-time 3 "http://localhost:$port/ready" -o /dev/null -w '%{http_code}' 2>/dev/null || true)
+        [ -z "$ready_code" ] && ready_code="000"
+
+        if [ "$code" = "200" ] && [ "$ready_code" = "200" ]; then
+            ok "$loc — healthy and ready"
+            ok_count=$((ok_count+1))
+        else
+            err "$loc — NOT ready (health=$code, ready=$ready_code)"
+            fail_count=$((fail_count+1))
+        fi
+    done
+
+    echo ""
+    if [ "$fail_count" -eq 0 ]; then
+        ok "All $total locations healthy and ready. Safe to rollout."
+        return 0
+    else
+        err "$fail_count/$total locations not ready. Fix before rolling out."
+        return 1
+    fi
+}
+
 cmd_rollout() {
     local new_version="$1"
     local canary="vancouver"
@@ -238,6 +275,14 @@ cmd_rollout() {
 
     echo ""
     log "=== Safe Rollout: v$new_version ==="
+    echo ""
+
+    log "Running pre-rollout validation..."
+    if ! cmd_validate; then
+        err "Pre-rollout validation failed. Aborting."
+        record_event "rollout_abort" "all" "pre-validation failed for v$new_version"
+        return 1
+    fi
     echo ""
 
     # Phase 1: Canary
@@ -254,6 +299,7 @@ cmd_rollout() {
 
     if [ "$canary_health" != "200" ]; then
         err "Canary failed health check (HTTP $canary_health). Aborting rollout."
+        record_event "rollout_abort" "canary:$canary" "v$new_version failed health check"
         err "Rolling back canary..."
         cmd_set_version "$canary" "1.0.0"
         err "Rollout ABORTED. Only canary was affected and has been rolled back."
@@ -372,6 +418,7 @@ case "${1:-help}" in
     recover)
         [ -z "${2:-}" ] && { err "Usage: deploy.sh recover <location>"; exit 1; }
         cmd_recover "$2" ;;
+    validate)  cmd_validate ;;
     rollout)
         [ -z "${2:-}" ] && { err "Usage: deploy.sh rollout <version>"; exit 1; }
         cmd_rollout "$2" ;;
