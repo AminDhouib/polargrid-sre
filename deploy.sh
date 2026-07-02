@@ -3,7 +3,7 @@ set -euo pipefail
 
 LOCATIONS="vancouver toronto london frankfurt singapore"
 COMPOSE="docker compose"
-PROJECT="polargrid-sre-trial"
+PROJECT="polargrid-sre"
 DEPLOY_LOG=".deploy_history"
 
 RED='\033[0;31m'
