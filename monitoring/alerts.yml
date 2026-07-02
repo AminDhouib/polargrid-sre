@@ -1,0 +1,65 @@
+groups:
+  - name: polargrid-inference
+    rules:
+      - alert: LocationUnhealthy
+        expr: service_healthy == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.location }} is unhealthy"
+          description: "Location {{ $labels.location }} (v{{ $labels.version }}) has been unhealthy for 30s."
+
+      - alert: HighErrorRate
+        expr: rate(inference_requests_total{status="error"}[2m]) / rate(inference_requests_total[2m]) > 0.05
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.location }} error rate above 5%"
+          description: "Location {{ $labels.location }} error rate is {{ $value | humanizePercentage }}."
+
+      - alert: HighP99Latency
+        expr: histogram_quantile(0.99, rate(inference_request_duration_seconds_bucket[2m])) > 1.0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.location }} P99 latency above 1s"
+          description: "Location {{ $labels.location }} P99 latency is {{ $value | humanizeDuration }}."
+
+      - alert: GPUOverloaded
+        expr: gpu_utilization_percent > 90
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.location }} GPU utilization above 90%"
+          description: "Location {{ $labels.location }} GPU at {{ $value }}%."
+
+      - alert: GPUOverheating
+        expr: gpu_temperature_celsius > 85
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.location }} GPU temperature critical"
+          description: "Location {{ $labels.location }} GPU temp is {{ $value }}°C."
+
+      - alert: LocationNotReady
+        expr: service_ready == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.location }} is not ready"
+          description: "Location {{ $labels.location }} readiness probe failing for 30s."
+
+      - alert: RequestQueueing
+        expr: inference_queue_depth > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.location }} requests queueing"
+          description: "Location {{ $labels.location }} has {{ $value }} requests in queue."
