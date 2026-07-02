@@ -33,12 +33,18 @@ Commands:
   set-version <loc> <ver>  Update version for a location
   degrade <location>   Simulate degraded mode for a location
   recover <location>   Recover a degraded location
+  rollout <version>    Safe incremental rollout to all locations
+  rollback <location>  Rollback a location to previous version
   teardown             Full teardown and cleanup
+  load [location]      Generate test load against location(s)
 
 Examples:
   ./deploy.sh setup
   ./deploy.sh up
   ./deploy.sh up vancouver
+  ./deploy.sh degrade singapore
+  ./deploy.sh rollout 2.0.0
+  ./deploy.sh rollback singapore
   ./deploy.sh teardown
 EOF
 }
@@ -209,6 +215,97 @@ cmd_recover() {
     ok "$loc recovered"
 }
 
+cmd_rollout() {
+    local new_version="$1"
+    local canary="vancouver"
+    local remaining="toronto london frankfurt singapore"
+
+    echo ""
+    log "=== Safe Rollout: v$new_version ==="
+    echo ""
+
+    # Phase 1: Canary
+    log "Phase 1: Canary deployment to $canary"
+    cmd_set_version "$canary" "$new_version"
+
+    log "Waiting 10s for canary stabilization..."
+    sleep 10
+
+    local port
+    port=$(get_port "$canary")
+    local canary_health
+    canary_health=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://localhost:$port/health" 2>/dev/null || echo "000")
+
+    if [ "$canary_health" != "200" ]; then
+        err "Canary failed health check (HTTP $canary_health). Aborting rollout."
+        err "Rolling back canary..."
+        cmd_set_version "$canary" "1.0.0"
+        err "Rollout ABORTED. Only canary was affected and has been rolled back."
+        return 1
+    fi
+    ok "Canary healthy. Proceeding to Phase 2."
+    echo ""
+
+    # Phase 2: Rolling deployment
+    log "Phase 2: Rolling deployment to remaining locations"
+    for loc in $remaining; do
+        log "Deploying to $loc..."
+        cmd_set_version "$loc" "$new_version"
+
+        log "Validating $loc..."
+        sleep 5
+        port=$(get_port "$loc")
+        local loc_health
+        loc_health=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://localhost:$port/health" 2>/dev/null || echo "000")
+
+        if [ "$loc_health" != "200" ]; then
+            err "$loc failed health check. Stopping rollout."
+            err "Locations already updated: $canary + previous in this loop"
+            err "Run: ./deploy.sh rollback $loc"
+            return 1
+        fi
+        ok "$loc healthy at v$new_version"
+    done
+
+    echo ""
+    ok "=== Rollout complete: all locations at v$new_version ==="
+    cmd_version
+}
+
+cmd_rollback() {
+    local loc="$1"
+    local previous_version="1.0.0"
+
+    log "Rolling back $loc to v$previous_version..."
+    cmd_set_version "$loc" "$previous_version"
+    cmd_recover "$loc"
+    ok "$loc rolled back to v$previous_version"
+}
+
+cmd_load() {
+    local target="${1:-all}"
+    local targets=""
+
+    if [ "$target" = "all" ]; then
+        targets="$LOCATIONS"
+    else
+        targets="$target"
+    fi
+
+    log "Generating load against: $targets (Ctrl+C to stop)"
+    while true; do
+        for loc in $targets; do
+            local port
+            port=$(get_port "$loc")
+            curl -s -X POST "http://localhost:$port/v1/inference" \
+                -H "Content-Type: application/json" \
+                -d '{"prompt":"test inference request from load generator"}' \
+                > /dev/null 2>&1 &
+        done
+        sleep 0.5
+    done
+}
+
 cmd_teardown() {
     log "Tearing down entire deployment..."
     $COMPOSE down -v --remove-orphans
@@ -242,7 +339,14 @@ case "${1:-help}" in
     recover)
         [ -z "${2:-}" ] && { err "Usage: deploy.sh recover <location>"; exit 1; }
         cmd_recover "$2" ;;
+    rollout)
+        [ -z "${2:-}" ] && { err "Usage: deploy.sh rollout <version>"; exit 1; }
+        cmd_rollout "$2" ;;
+    rollback)
+        [ -z "${2:-}" ] && { err "Usage: deploy.sh rollback <location>"; exit 1; }
+        cmd_rollback "$2" ;;
     teardown)  cmd_teardown ;;
     logs)      cmd_logs "${2:-}" ;;
+    load)      cmd_load "${2:-all}" ;;
     help|*)    usage ;;
 esac
