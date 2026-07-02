@@ -29,6 +29,10 @@ Commands:
   status               Show deployment status
   health               Run health checks across all locations
   logs [location]      Tail logs for a location (default: all)
+  version              Show deployed versions
+  set-version <loc> <ver>  Update version for a location
+  degrade <location>   Simulate degraded mode for a location
+  recover <location>   Recover a degraded location
   teardown             Full teardown and cleanup
 
 Examples:
@@ -156,6 +160,55 @@ cmd_health() {
     fi
 }
 
+cmd_version() {
+    echo ""
+    log "Deployed versions:"
+    for loc in $LOCATIONS; do
+        local port
+        port=$(get_port "$loc")
+        local ver
+        ver=$(curl -s --max-time 2 "http://localhost:$port/info" 2>/dev/null | grep -o '"version":"[^"]*"' | cut -d'"' -f4)
+        echo "  $loc: ${ver:-unreachable}"
+    done
+    echo ""
+}
+
+cmd_set_version() {
+    local loc="$1" ver="$2"
+    log "Setting $loc to version $ver..."
+    sed -i 's/^SERVICE_VERSION=.*/SERVICE_VERSION='"$ver"'/' "configs/${loc}.env"
+    $COMPOSE up -d --build "$loc"
+    sleep 3
+    local actual
+    actual=$(curl -s --max-time 3 "http://localhost:$(get_port "$loc")/info" 2>/dev/null | grep -o '"version":"[^"]*"' | cut -d'"' -f4)
+    if [ "$actual" = "$ver" ]; then
+        ok "$loc now running version $actual"
+    else
+        err "$loc version mismatch: expected $ver, got ${actual:-unreachable}"
+        return 1
+    fi
+}
+
+cmd_degrade() {
+    local loc="$1"
+    log "Simulating degradation for $loc..."
+    sed -i 's/^DEGRADED=.*/DEGRADED=true/' "configs/${loc}.env"
+    sed -i 's/^ERROR_RATE=.*/ERROR_RATE=0.15/' "configs/${loc}.env"
+    sed -i 's/^TAIL_LATENCY_PCTILE=.*/TAIL_LATENCY_PCTILE=0.30/' "configs/${loc}.env"
+    $COMPOSE up -d --build "$loc"
+    warn "$loc is now in DEGRADED mode"
+}
+
+cmd_recover() {
+    local loc="$1"
+    log "Recovering $loc..."
+    sed -i 's/^DEGRADED=.*/DEGRADED=false/' "configs/${loc}.env"
+    sed -i 's/^ERROR_RATE=.*/ERROR_RATE=0.02/' "configs/${loc}.env"
+    sed -i 's/^TAIL_LATENCY_PCTILE=.*/TAIL_LATENCY_PCTILE=0.05/' "configs/${loc}.env"
+    $COMPOSE up -d --build "$loc"
+    ok "$loc recovered"
+}
+
 cmd_teardown() {
     log "Tearing down entire deployment..."
     $COMPOSE down -v --remove-orphans
@@ -179,6 +232,16 @@ case "${1:-help}" in
     restart)   cmd_restart "${2:-all}" ;;
     status)    cmd_status ;;
     health)    cmd_health ;;
+    version)   cmd_version ;;
+    set-version)
+        [ -z "${2:-}" ] || [ -z "${3:-}" ] && { err "Usage: deploy.sh set-version <location> <version>"; exit 1; }
+        cmd_set_version "$2" "$3" ;;
+    degrade)
+        [ -z "${2:-}" ] && { err "Usage: deploy.sh degrade <location>"; exit 1; }
+        cmd_degrade "$2" ;;
+    recover)
+        [ -z "${2:-}" ] && { err "Usage: deploy.sh recover <location>"; exit 1; }
+        cmd_recover "$2" ;;
     teardown)  cmd_teardown ;;
     logs)      cmd_logs "${2:-}" ;;
     help|*)    usage ;;
