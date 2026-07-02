@@ -3,6 +3,8 @@ set -euo pipefail
 
 LOCATIONS="vancouver toronto london frankfurt singapore"
 COMPOSE="docker compose"
+PROJECT="polargrid-sre-trial"
+DEPLOY_LOG=".deploy_history"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -14,6 +16,11 @@ log()  { echo -e "${CYAN}[deploy]${NC} $*"; }
 ok()   { echo -e "${GREEN}[  ok  ]${NC} $*"; }
 warn() { echo -e "${YELLOW}[ warn ]${NC} $*"; }
 err()  { echo -e "${RED}[error ]${NC} $*"; }
+
+record_event() {
+    local action="$1" target="$2" detail="${3:-}"
+    echo "$(date '+%Y-%m-%d %H:%M:%S')|$action|$target|$detail" >> "$DEPLOY_LOG"
+}
 
 usage() {
     cat <<EOF
@@ -37,6 +44,7 @@ Commands:
   rollback <location>  Rollback a location to previous version
   teardown             Full teardown and cleanup
   load [location]      Generate test load against location(s)
+  history              Show recent deployment history
 
 Examples:
   ./deploy.sh setup
@@ -73,12 +81,16 @@ cmd_up() {
     if [ "$target" = "all" ]; then
         log "Deploying all locations + monitoring..."
         $COMPOSE up -d
-        ok "All services deployed"
+        ok "All locations deployed"
+        record_event "deploy" "all" "started all locations"
     else
         log "Deploying $target..."
         $COMPOSE up -d "$target"
         ok "$target deployed"
+        record_event "deploy" "$target" "started"
     fi
+    sleep 2
+    cmd_health
 }
 
 cmd_down() {
@@ -189,8 +201,10 @@ cmd_set_version() {
     actual=$(curl -s --max-time 3 "http://localhost:$(get_port "$loc")/info" 2>/dev/null | grep -o '"version":"[^"]*"' | cut -d'"' -f4)
     if [ "$actual" = "$ver" ]; then
         ok "$loc now running version $actual"
+        record_event "version" "$loc" "updated to v$ver"
     else
         err "$loc version mismatch: expected $ver, got ${actual:-unreachable}"
+        record_event "version_fail" "$loc" "expected v$ver, got ${actual:-unreachable}"
         return 1
     fi
 }
@@ -202,6 +216,7 @@ cmd_degrade() {
     sed -i 's/^ERROR_RATE=.*/ERROR_RATE=0.15/' "configs/${loc}.env"
     sed -i 's/^TAIL_LATENCY_PCTILE=.*/TAIL_LATENCY_PCTILE=0.30/' "configs/${loc}.env"
     $COMPOSE up -d --build "$loc"
+    record_event "degrade" "$loc" "simulated failure"
     warn "$loc is now in DEGRADED mode"
 }
 
@@ -213,6 +228,7 @@ cmd_recover() {
     sed -i 's/^TAIL_LATENCY_PCTILE=.*/TAIL_LATENCY_PCTILE=0.05/' "configs/${loc}.env"
     $COMPOSE up -d --build "$loc"
     ok "$loc recovered"
+    record_event "recover" "$loc" "restored to healthy"
 }
 
 cmd_rollout() {
@@ -269,6 +285,7 @@ cmd_rollout() {
 
     echo ""
     ok "=== Rollout complete: all locations at v$new_version ==="
+    record_event "rollout_complete" "all" "v$new_version"
     cmd_version
 }
 
@@ -279,7 +296,22 @@ cmd_rollback() {
     log "Rolling back $loc to v$previous_version..."
     cmd_set_version "$loc" "$previous_version"
     cmd_recover "$loc"
+    record_event "rollback" "$loc" "reverted to v$previous_version"
     ok "$loc rolled back to v$previous_version"
+}
+
+cmd_history() {
+    if [ ! -f "$DEPLOY_LOG" ]; then
+        warn "No deployment history yet."
+        return
+    fi
+    echo ""
+    printf "${CYAN}%-20s │ %-18s │ %-12s │ %s${NC}\n" "TIMESTAMP" "ACTION" "TARGET" "DETAIL"
+    echo "─────────────────────┼────────────────────┼──────────────┼─────────────────────────"
+    tail -20 "$DEPLOY_LOG" | while IFS='|' read -r ts action target detail; do
+        printf "%-20s │ %-18s │ %-12s │ %s\n" "$ts" "$action" "$target" "$detail"
+    done
+    echo ""
 }
 
 cmd_load() {
@@ -308,6 +340,7 @@ cmd_load() {
 
 cmd_teardown() {
     log "Tearing down entire deployment..."
+    record_event "teardown" "all" "full environment teardown"
     $COMPOSE down -v --remove-orphans
     ok "All containers, networks, and volumes removed"
 }
@@ -348,5 +381,6 @@ case "${1:-help}" in
     teardown)  cmd_teardown ;;
     logs)      cmd_logs "${2:-}" ;;
     load)      cmd_load "${2:-all}" ;;
+    history)   cmd_history ;;
     help|*)    usage ;;
 esac
