@@ -244,9 +244,11 @@ cmd_validate() {
         port=$(get_port "$loc")
         local code
         code=$(curl -s --max-time 3 "http://localhost:$port/health" -o /dev/null -w '%{http_code}' 2>/dev/null || true)
+        code=$(echo "$code" | tail -c 4 | head -c 3)
         [ -z "$code" ] && code="000"
         local ready_code
         ready_code=$(curl -s --max-time 3 "http://localhost:$port/ready" -o /dev/null -w '%{http_code}' 2>/dev/null || true)
+        ready_code=$(echo "$ready_code" | tail -c 4 | head -c 3)
         [ -z "$ready_code" ] && ready_code="000"
 
         if [ "$code" = "200" ] && [ "$ready_code" = "200" ]; then
