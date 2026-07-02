@@ -2,6 +2,20 @@
 
 A local simulation of a distributed AI inference deployment environment. Deploys a mock inference service across 5 simulated geographic locations with deployment automation, performance monitoring, safe rollout workflows, and failure detection.
 
+## Screenshots
+
+**Grafana Dashboard — Request Rate, Latency, Error Rate:**
+![Grafana Overview](screenshots/grafana-overview.png)
+
+**GPU Utilization, Temperature, Service Health, Memory:**
+![Grafana GPU & Health](screenshots/grafana-gpu-health.png)
+
+**Prometheus Targets — All 5 Locations UP:**
+![Prometheus Targets](screenshots/prometheus-targets.png)
+
+**Alerting Rules — 7 Rules Loaded:**
+![Prometheus Alerts](screenshots/prometheus-alerts.png)
+
 ## Prerequisites
 
 - Docker & Docker Compose v2+
