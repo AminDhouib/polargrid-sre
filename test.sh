@@ -114,6 +114,33 @@ assert "locations have distinct identities" \
     "[ '$v1' != '$v2' ]"
 echo ""
 
+# ─── Queue and active request metrics ───
+echo "Queue metrics:"
+metrics_van=$(curl -s http://localhost:8001/metrics 2>/dev/null)
+assert "active requests metric exists" \
+    "echo '$metrics_van' | grep -q 'inference_active_requests'"
+assert "queue depth metric exists" \
+    "echo '$metrics_van' | grep -q 'inference_queue_depth'"
+echo ""
+
+# ─── Prometheus alerting rules ───
+echo "Alerting:"
+rules_resp=$(curl -s http://localhost:9090/api/v1/rules 2>/dev/null)
+assert "alerting rules loaded" \
+    "echo '$rules_resp' | grep -q 'LocationUnhealthy'"
+assert "alert rules are healthy" \
+    "echo '$rules_resp' | grep -q '\"health\":\"ok\"'"
+echo ""
+
+# ─── Readiness probe ───
+echo "Readiness:"
+for port in 8001 8002 8003 8004 8005; do
+    loc_name=$(curl -s "http://localhost:$port/info" 2>/dev/null | grep -o '"location":"[^"]*"' | cut -d'"' -f4)
+    assert "$loc_name readiness probe" \
+        "[ \$(curl -s -o /dev/null -w '%{http_code}' http://localhost:$port/ready) = '200' ]"
+done
+echo ""
+
 # ─── Results ───
 total=$((passed+failed))
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
