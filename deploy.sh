@@ -99,9 +99,9 @@ cmd_restart() {
 
 cmd_status() {
     echo ""
-    printf "${CYAN}%-12s %-10s %-10s %-8s${NC}\n" \
-        "LOCATION" "STATUS" "VERSION" "PORT"
-    echo "----------------------------------------------"
+    printf "${CYAN}%-12s %-10s %-10s %-8s %-10s %-8s${NC}\n" \
+        "LOCATION" "STATUS" "VERSION" "PORT" "HEALTH" "DEGRADED"
+    echo "------------------------------------------------------------------------"
 
     for loc in $LOCATIONS; do
         local port
@@ -112,11 +112,15 @@ cmd_status() {
         if [ "$container_status" = "running" ]; then
             local info
             info=$(curl -s --max-time 2 "http://localhost:$port/health" 2>/dev/null || echo '{}')
-            local version
+            local version health_status degraded
             version=$(echo "$info" | grep -o '"version":"[^"]*"' | cut -d'"' -f4)
-            printf "%-12s ${GREEN}%-10s${NC} %-10s %-8s\n" "$loc" "running" "${version:-?}" "$port"
+            health_status=$(echo "$info" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+            degraded=$(echo "$info" | grep -o '"degraded":[a-z]*' | cut -d: -f2)
+            printf "%-12s ${GREEN}%-10s${NC} %-10s %-8s %-10s %-8s\n" \
+                "$loc" "running" "${version:-?}" "$port" "${health_status:-?}" "${degraded:-false}"
         else
-            printf "%-12s ${RED}%-10s${NC} %-10s %-8s\n" "$loc" "stopped" "-" "$port"
+            printf "%-12s ${RED}%-10s${NC} %-10s %-8s %-10s %-8s\n" \
+                "$loc" "stopped" "-" "$port" "-" "-"
         fi
     done
     echo ""
