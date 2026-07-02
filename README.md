@@ -314,22 +314,3 @@ polargrid-sre/
         └── dashboards/
             └── polargrid-overview.json
 ```
-
-## TODO
-
-- [x] Multi-location deployment with Docker Compose
-- [x] Health, readiness, and metrics endpoints
-- [x] Inference and streaming endpoints
-- [x] Prometheus + Grafana monitoring stack
-- [x] CLI monitoring dashboard
-- [x] Safe canary → rolling rollout
-- [x] Failure simulation and recovery
-- [x] Rollback support
-- [x] Deployment history and audit log
-- [x] Pre-rollout validation
-- [x] Cross-location performance comparison
-- [x] Automated smoke tests
-- [x] Interactive demo walkthrough
-- [x] Queue depth and active request metrics
-- [x] Prometheus alerting rules
-- [x] Container healthchecks
