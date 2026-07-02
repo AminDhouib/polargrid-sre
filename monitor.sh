@@ -21,9 +21,9 @@ while true; do
     echo -e "${DIM}  Refreshing every ${REFRESH}s — $(date '+%Y-%m-%d %H:%M:%S')${NC}"
     echo ""
 
-    printf "${BOLD}%-12s │ %-8s │ %-8s │ %-10s │ %-7s │ %-7s │ %-6s │ %-6s │ %-5s${NC}\n" \
-        "LOCATION" "STATUS" "VERSION" "LATENCY" "ERR%" "GPU%" "VRAM" "TEMP" "RPS"
-    echo "─────────────┼──────────┼──────────┼────────────┼─────────┼─────────┼────────┼────────┼───────"
+    printf "${BOLD}%-12s │ %-8s │ %-8s │ %-10s │ %-7s │ %-7s │ %-6s │ %-6s │ %-5s │ %-4s${NC}\n" \
+        "LOCATION" "STATUS" "VERSION" "LATENCY" "ERR%" "GPU%" "VRAM" "TEMP" "RPS" "QUEUE"
+    echo "─────────────┼──────────┼──────────┼────────────┼─────────┼─────────┼────────┼────────┼───────┼──────"
 
     i=0
     for loc in $LOCATIONS; do
@@ -41,6 +41,7 @@ while true; do
         gpu_util=$(echo "$metrics_resp" | grep '^gpu_utilization_percent' | grep -v '^#' | head -1 | awk '{print $2}')
         gpu_mem=$(echo "$metrics_resp" | grep '^gpu_memory_used_gb' | grep -v '^#' | head -1 | awk '{print $2}')
         gpu_temp=$(echo "$metrics_resp" | grep '^gpu_temperature_celsius' | grep -v '^#' | head -1 | awk '{print $2}')
+        queue_depth=$(echo "$metrics_resp" | grep '^inference_queue_depth' | grep -v '^#' | head -1 | awk '{printf "%.0f", $2}')
 
         total_req=$(echo "$metrics_resp" | grep '^inference_requests_total' | grep -v '^#' | awk '{sum+=$2} END {printf "%.0f", sum}')
         err_req=$(echo "$metrics_resp" | grep '^inference_requests_total.*status="error"' | grep -v '^#' | awk '{sum+=$2} END {printf "%.0f", sum}')
@@ -77,7 +78,13 @@ while true; do
         [ "$err_int" -gt 5 ] 2>/dev/null && err_color="$RED"
         [ "$err_int" -gt 1 ] 2>/dev/null && [ "$err_int" -le 5 ] 2>/dev/null && err_color="$YELLOW"
 
-        printf "%-12s │ ${status_color}%-8s${NC} │ %-8s │ %-10s │ ${err_color}%-7s${NC} │ ${gpu_color}%-7s${NC} │ %-6s │ %-6s │ %-5s\n" \
+        queue_color="$NC"
+        if [ -n "$queue_depth" ] && [ "$queue_depth" != "0" ]; then
+            queue_color="$YELLOW"
+            [ "$queue_depth" -gt 5 ] 2>/dev/null && queue_color="$RED"
+        fi
+
+        printf "%-12s │ ${status_color}%-8s${NC} │ %-8s │ %-10s │ ${err_color}%-7s${NC} │ ${gpu_color}%-7s${NC} │ %-6s │ %-6s │ %-5s │ ${queue_color}%-4s${NC}\n" \
             "$loc" \
             "${status:-down}" \
             "${version:--}" \
@@ -86,7 +93,8 @@ while true; do
             "${gpu_util:-—}%" \
             "${gpu_mem:-—}G" \
             "${gpu_temp:-—}°" \
-            "${total_req:-0}"
+            "${total_req:-0}" \
+            "${queue_depth:-0}"
     done
 
     echo ""
