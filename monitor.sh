@@ -47,6 +47,7 @@ while true; do
 
         err_pct="0.0"
         if [ -n "$total_req" ] && [ "$total_req" != "0" ] && [ "$total_req" != "" ]; then
+            err_req="${err_req:-0}"
             err_pct=$(awk "BEGIN {printf \"%.1f\", ($err_req/$total_req)*100}")
         fi
 
