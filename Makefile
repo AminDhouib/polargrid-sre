@@ -1,4 +1,4 @@
-.PHONY: setup up down status health version logs teardown load rollout degrade recover monitor test demo
+.PHONY: setup up down status health version logs teardown load rollout degrade recover monitor test demo history compare
 
 setup:
 	bash deploy.sh setup
@@ -47,3 +47,9 @@ test:
 
 demo:
 	bash demo.sh
+
+history:
+	bash deploy.sh history
+
+compare:
+	bash compare.sh $(N)
